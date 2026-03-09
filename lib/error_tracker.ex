@@ -79,8 +79,6 @@ defmodule ErrorTracker do
   Breadcrumbs can be viewed in the dashboard on the details page of an occurrence.
   """
 
-  import Ecto.Query
-
   alias ErrorTracker.Error
   alias ErrorTracker.Occurrence
   alias ErrorTracker.Repo
@@ -141,7 +139,8 @@ defmodule ErrorTracker do
     if enabled?() && !ignored?(error, context) do
       sanitized_context = sanitize_context(context)
 
-      upsert_error!(error, stacktrace, sanitized_context, breadcrumbs, reason)
+      {storage_mod, storage_opts} = storage()
+      storage_mod.store(error, stacktrace, sanitized_context, breadcrumbs, reason, storage_opts)
     else
       :noop
     end
@@ -282,6 +281,34 @@ defmodule ErrorTracker do
     Process.get(:error_tracker_breadcrumbs, [])
   end
 
+  @doc """
+  Sets the Postgres schema prefix for the current process.
+
+  This overrides the application-level `:prefix` config for all ErrorTracker
+  operations in the current process. Useful for multi-tenant setups where
+  different senders' errors are isolated in separate Postgres schemas.
+
+      ErrorTracker.set_prefix("error_tracker_credo_prod")
+
+  Has no effect on MySQL or SQLite backends — prefix isolation is
+  a PostgreSQL-only feature.
+  """
+  @spec set_prefix(String.t()) :: String.t()
+  def set_prefix(prefix) when is_binary(prefix) do
+    Process.put(:error_tracker_prefix, prefix)
+    prefix
+  end
+
+  @doc """
+  Returns the Postgres schema prefix for the current process, or `nil` if not set.
+
+  When `nil`, the application-level `:prefix` config is used (defaulting to `"public"`).
+  """
+  @spec get_prefix() :: String.t() | nil
+  def get_prefix do
+    Process.get(:error_tracker_prefix)
+  end
+
   defp enabled? do
     !!Application.get_env(:error_tracker, :enabled, true)
   end
@@ -326,62 +353,11 @@ defmodule ErrorTracker do
     end
   end
 
-  defp upsert_error!(error, stacktrace, context, breadcrumbs, reason) do
-    status_and_muted_query =
-      from e in Error,
-        where: [fingerprint: ^error.fingerprint],
-        select: {e.status, e.muted}
-
-    {existing_status, muted} =
-      case Repo.one(status_and_muted_query) do
-        {existing_status, muted} -> {existing_status, muted}
-        nil -> {nil, false}
-      end
-
-    {:ok, {error, occurrence}} =
-      Repo.transaction(fn ->
-        error =
-          Repo.with_adapter(fn
-            :mysql ->
-              Repo.insert!(error,
-                on_conflict: [set: [status: :unresolved, last_occurrence_at: DateTime.utc_now()]]
-              )
-
-            _other ->
-              Repo.insert!(error,
-                on_conflict: [set: [status: :unresolved, last_occurrence_at: DateTime.utc_now()]],
-                conflict_target: :fingerprint
-              )
-          end)
-
-        occurrence =
-          error
-          |> Ecto.build_assoc(:occurrences)
-          |> Occurrence.changeset(%{
-            stacktrace: stacktrace,
-            context: context,
-            breadcrumbs: breadcrumbs,
-            reason: reason
-          })
-          |> Repo.insert!()
-
-        {error, occurrence}
-      end)
-
-    %Occurrence{} = occurrence
-    occurrence = %{occurrence | error: error}
-
-    # If the error existed and was marked as resolved before this exception,
-    # sent a Telemetry event
-    # If it is a new error, sent a Telemetry event
-    case existing_status do
-      :resolved -> Telemetry.unresolved_error(error)
-      :unresolved -> :noop
-      nil -> Telemetry.new_error(error)
+  defp storage do
+    case Application.get_env(:error_tracker, :storage, ErrorTracker.Storage.Ecto) do
+      {module, opts} -> {module, opts}
+      module -> {module, []}
     end
-
-    Telemetry.new_occurrence(occurrence, muted)
-    occurrence
   end
 
   @default_json_encoder (cond do

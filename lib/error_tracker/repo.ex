@@ -53,8 +53,15 @@ defmodule ErrorTracker.Repo do
 
     defaults =
       with_adapter(fn
-        :postgres -> [prefix: Application.get_env(:error_tracker, :prefix, "public")]
-        _ -> []
+        :postgres ->
+          prefix =
+            Process.get(:error_tracker_prefix) ||
+              Application.get_env(:error_tracker, :prefix, "public")
+
+          [prefix: prefix]
+
+        _ ->
+          []
       end)
 
     opts_w_defaults = Keyword.merge(defaults, opts)
