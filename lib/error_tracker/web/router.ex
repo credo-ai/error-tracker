@@ -30,6 +30,14 @@ defmodule ErrorTracker.Web.Router do
   * `csp_nonce_assign_key`: an assign key to find the CSP nonce value used for assets.
   Supports either `atom()` or a map of type
   `%{optional(:img) => atom(), optional(:script) => atom(), optional(:style) => atom()}`
+
+  * `prefix`: a Postgres schema prefix to scope all queries in this dashboard
+  instance. Useful for multi-tenant setups where each tenant's errors are
+  stored in a separate schema.
+
+      # Static prefix:
+      error_tracker_dashboard "/errors", prefix: "error_tracker_credo_prod"
+
   """
   defmacro error_tracker_dashboard(path, opts \\ []) do
     quote bind_quoted: [path: path, opts: opts] do
@@ -57,6 +65,7 @@ defmodule ErrorTracker.Web.Router do
   def __parse_options__(opts, path) do
     custom_on_mount = Keyword.get(opts, :on_mount, [])
     session_name = Keyword.get(opts, :as, :error_tracker_dashboard)
+    prefix = Keyword.get(opts, :prefix)
 
     csp_nonce_assign_key =
       case opts[:csp_nonce_assign_key] do
@@ -66,7 +75,7 @@ defmodule ErrorTracker.Web.Router do
       end
 
     session_opts = [
-      session: {__MODULE__, :__session__, [csp_nonce_assign_key]},
+      session: {__MODULE__, :__session__, [csp_nonce_assign_key, prefix]},
       on_mount: [{SetAssigns, {:set_dashboard_path, path}}] ++ custom_on_mount,
       root_layout: {ErrorTracker.Web.Layouts, :root}
     ]
@@ -75,13 +84,19 @@ defmodule ErrorTracker.Web.Router do
   end
 
   @doc false
-  def __session__(conn, csp_nonce_assign_key) do
-    %{
+  def __session__(conn, csp_nonce_assign_key, prefix) do
+    session = %{
       "csp_nonces" => %{
         img: conn.assigns[csp_nonce_assign_key[:img]],
         style: conn.assigns[csp_nonce_assign_key[:style]],
         script: conn.assigns[csp_nonce_assign_key[:script]]
       }
     }
+
+    if prefix do
+      Map.put(session, "prefix", prefix)
+    else
+      session
+    end
   end
 end
