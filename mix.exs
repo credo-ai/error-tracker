@@ -97,10 +97,12 @@ defmodule ErrorTracker.MixProject do
       {:styler, "~> 1.11", only: [:dev, :test], runtime: false},
       {:tailwind, "~> 0.2", only: :dev},
       # Optional dependencies
+      {:broadway, "~> 1.0", optional: true},
       {:ecto_sqlite3, ">= 0.0.0", optional: true},
       {:igniter, "~> 0.5", optional: true},
       {:jason, "~> 1.1", optional: true},
       {:myxql, ">= 0.0.0", optional: true},
+      {:broadway_sqs, "~> 0.7", optional: true},
       {:postgrex, ">= 0.0.0", optional: true}
     ]
   end
