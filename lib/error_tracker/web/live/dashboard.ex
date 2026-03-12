@@ -12,6 +12,15 @@ defmodule ErrorTracker.Web.Live.Dashboard do
   @per_page 10
 
   @impl Phoenix.LiveView
+  def mount(_params, _session, socket) do
+    if connected?(socket) do
+      ErrorTracker.PubSub.subscribe(ErrorTracker.get_prefix())
+    end
+
+    {:ok, socket}
+  end
+
+  @impl Phoenix.LiveView
   def handle_params(params, uri, socket) do
     path = struct(URI, uri |> URI.parse() |> Map.take([:path, :query]))
 
@@ -75,6 +84,11 @@ defmodule ErrorTracker.Web.Live.Dashboard do
     error = Repo.get(Error, id)
     {:ok, _unmuted} = ErrorTracker.unmute(error)
 
+    {:noreply, paginate_errors(socket)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_info({:error_tracker, _event_type, _metadata}, socket) do
     {:noreply, paginate_errors(socket)}
   end
 

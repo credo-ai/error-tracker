@@ -15,6 +15,10 @@ defmodule ErrorTracker.Web.Live.Show do
   def mount(%{"id" => id} = params, _session, socket) do
     error = Repo.get!(Error, id)
 
+    if connected?(socket) do
+      ErrorTracker.PubSub.subscribe(ErrorTracker.get_prefix())
+    end
+
     {:ok,
      assign(socket,
        error: error,
@@ -84,6 +88,20 @@ defmodule ErrorTracker.Web.Live.Show do
     {:ok, updated_error} = ErrorTracker.unmute(socket.assigns.error)
 
     {:noreply, assign(socket, :error, updated_error)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_info({:error_tracker, _event_type, %{error: event_error}}, socket) do
+    if event_error.id == socket.assigns.error.id do
+      error = Repo.get!(Error, socket.assigns.error.id)
+      {:noreply, socket |> assign(:error, error) |> load_related_occurrences()}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:error_tracker, _, _}, socket) do
+    {:noreply, socket}
   end
 
   defp load_related_occurrences(socket) do

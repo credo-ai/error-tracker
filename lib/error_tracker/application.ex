@@ -14,5 +14,6 @@ defmodule ErrorTracker.Application do
   defp attach_handlers do
     ErrorTracker.Integrations.Oban.attach()
     ErrorTracker.Integrations.Phoenix.attach()
+    ErrorTracker.PubSub.attach()
   end
 end
