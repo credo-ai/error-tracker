@@ -67,15 +67,59 @@ defmodule ErrorTracker.Consumer.Release do
 
     Logger.info("ErrorTracker: migrating schema #{schema}")
     Ecto.Adapters.SQL.query!(repo, "CREATE SCHEMA IF NOT EXISTS \"#{schema}\"", [])
-    ErrorTracker.Migration.up(Keyword.put(opts, :prefix, schema))
+
+    migration_module = build_migration_module(schema, opts)
+
+    Ecto.Migrator.up(repo, System.system_time(:second), migration_module,
+      prefix: schema,
+      log: false
+    )
   end
 
   @doc """
   Rolls back ErrorTracker migrations for a single schema.
   """
   def rollback_schema(schema, opts \\ []) do
+    repo = Application.fetch_env!(:error_tracker, :repo)
+
     Logger.info("ErrorTracker: rolling back schema #{schema}")
-    ErrorTracker.Migration.down(Keyword.put(opts, :prefix, schema))
+
+    migration_module = build_migration_module(schema, opts)
+
+    Ecto.Migrator.down(repo, System.system_time(:second), migration_module,
+      prefix: schema,
+      log: false
+    )
+  end
+
+  defp build_migration_module(schema, opts) do
+    safe_name = schema |> String.replace(~r/[^a-zA-Z0-9_]/, "_") |> Macro.camelize()
+    module_name = Module.concat([ErrorTracker.Consumer.ReleaseMigration, safe_name])
+
+    unless Code.ensure_loaded?(module_name) do
+      contents =
+        quote do
+          use Ecto.Migration
+
+          def up do
+            ErrorTracker.Migration.up(
+              unquote(Macro.escape(opts))
+              |> Keyword.put(:prefix, unquote(schema))
+              |> Keyword.put_new(:create_schema, false)
+            )
+          end
+
+          def down do
+            ErrorTracker.Migration.down(
+              Keyword.put(unquote(Macro.escape(opts)), :prefix, unquote(schema))
+            )
+          end
+        end
+
+      Module.create(module_name, contents, Macro.Env.location(__ENV__))
+    end
+
+    module_name
   end
 
   defp schemas_from_opts(opts) do

@@ -13,7 +13,7 @@ defmodule ErrorTracker.Migration.Postgres.V01 do
     # we need to check for the legacy version storage to avoid running this
     # migration twice.
     if current_version_legacy(opts) == 0 do
-      if create_schema, do: execute("CREATE SCHEMA IF NOT EXISTS #{prefix}")
+      if create_schema, do: execute("CREATE SCHEMA IF NOT EXISTS \"#{prefix}\"")
 
       create table(:error_tracker_meta,
                primary_key: [name: :key, type: :string],

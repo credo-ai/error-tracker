@@ -108,7 +108,46 @@ defmodule ErrorTracker.Consumer.SchemaRegistry do
     repo = Application.fetch_env!(:error_tracker, :repo)
 
     SQL.query!(repo, "CREATE SCHEMA IF NOT EXISTS \"#{schema}\"", [])
-    ErrorTracker.Migration.up(prefix: schema)
+    run_migration(repo, schema)
+  end
+
+  defp run_migration(repo, schema) do
+    # ErrorTracker.Migration.up/1 uses Ecto.Migration macros (execute, create table, etc.)
+    # which require an Ecto migration runner process. We provide one by running an
+    # anonymous migration through Ecto.Migrator.
+    migration_module = build_migration_module(schema)
+    # Schema already created above with proper quoting, skip V01's CREATE SCHEMA
+
+    Ecto.Migrator.up(repo, System.system_time(:second), migration_module,
+      prefix: schema,
+      log: false
+    )
+  end
+
+  defp build_migration_module(schema) do
+    # Generate a unique module name per schema to avoid conflicts
+    safe_name = schema |> String.replace(~r/[^a-zA-Z0-9_]/, "_") |> Macro.camelize()
+    module_name = Module.concat([ErrorTracker.Consumer.RuntimeMigration, safe_name])
+
+    unless Code.ensure_loaded?(module_name) do
+      contents =
+        quote do
+          use Ecto.Migration
+
+          def up do
+            # create_schema: false — SchemaRegistry already created it with proper quoting
+            ErrorTracker.Migration.up(prefix: unquote(schema), create_schema: false)
+          end
+
+          def down do
+            ErrorTracker.Migration.down(prefix: unquote(schema))
+          end
+        end
+
+      Module.create(module_name, contents, Macro.Env.location(__ENV__))
+    end
+
+    module_name
   end
 
   defp discover_existing_schemas(_prefix_fn) do

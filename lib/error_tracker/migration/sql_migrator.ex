@@ -70,7 +70,7 @@ defmodule ErrorTracker.Migration.SQLMigrator do
         prefix = opts[:prefix]
 
         execute """
-        INSERT INTO #{prefix}.error_tracker_meta (key, value)
+        INSERT INTO "#{prefix}".error_tracker_meta (key, value)
         VALUES ('migration_version', '#{version}'), ('migration_timestamp', '#{timestamp}')
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         """
