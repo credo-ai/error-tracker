@@ -66,6 +66,10 @@ if Code.ensure_loaded?(Broadway) do
       try do
         ErrorTracker.set_prefix(schema)
 
+        if git_ref = payload["git_ref"] do
+          Process.put(:error_tracker_git_ref, git_ref)
+        end
+
         {error, stacktrace} = reconstruct_structs(payload)
 
         ErrorTracker.Storage.Ecto.store(
@@ -78,6 +82,7 @@ if Code.ensure_loaded?(Broadway) do
         )
       after
         Process.delete(:error_tracker_prefix)
+        Process.delete(:error_tracker_git_ref)
       end
 
       message
