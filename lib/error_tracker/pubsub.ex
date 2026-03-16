@@ -45,7 +45,7 @@ defmodule ErrorTracker.PubSub do
           [:error_tracker, :error, :resolved],
           [:error_tracker, :occurrence, :new]
         ],
-        &handle_event/4,
+        &__MODULE__.handle_event/4,
         %{}
       )
     end
