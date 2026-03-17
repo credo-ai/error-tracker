@@ -36,6 +36,11 @@ defmodule ErrorTracker.Web.Layouts do
   def navbar(assigns) do
     ~H"""
     <nav class="border-gray-400 bg-gray-900">
+      <div :if={breadcrumb = assigns[:breadcrumb]} class="container mx-auto px-4 pt-3">
+        <a href={breadcrumb.href} class="text-sm text-gray-400 hover:text-sky-400">
+          <%= breadcrumb.label %>
+        </a>
+      </div>
       <div class="container flex flex-wrap items-center justify-between mx-auto p-4">
         <.link
           href={dashboard_path(@socket)}
